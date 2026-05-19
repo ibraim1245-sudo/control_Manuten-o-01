@@ -1,0 +1,42 @@
+name: Build MHI Pro Industrial
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Instalar Dependências
+        run: pip install pywebview pyinstaller
+
+      - name: Compilar Executável
+        run: pyinstaller --onefile --noconsole --name "Manutencao_MHI" app.py
+
+      - name: Gerar Instalador com Atalho
+        shell: powershell
+        run: |
+          $iss = @"
+          [Setup]
+          AppName=Manutencao MHI Pro
+          AppVersion=2.0
+          DefaultDirName={autopf}\ManutencaoMHI
+          OutputDir=output
+          OutputBaseFilename=Instalador_MHI_Pro
+          [Files]
+          Source: "dist\Manutencao_MHI.exe"; DestDir: "{app}"; Flags: ignoreversion
+          [Icons]
+          Name: "{autodesktop}\Manutencao MHI Pro"; Filename: "{app}\Manutencao_MHI.exe"
+          Name: "{group}\Manutencao MHI Pro"; Filename: "{app}\Manutencao_MHI.exe"
+          "@
+          $iss | Out-File -FilePath setup.iss -Encoding utf8
+          iscc setup.iss
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Instalador-MHI-Final
+          path: output/Instalador_MHI_Pro.exe
