@@ -1,0 +1,44 @@
+name: Build MHI Native Pro
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Instalar Dependências
+        run: |
+          pip install PyQt6 pyinstaller
+
+      - name: Compilar EXE Nativo
+        run: |
+          pyinstaller --onefile --noconsole --name "Manutencao_MHI_Native" main.py
+
+      - name: Gerar Instalador Profissional
+        shell: powershell
+        run: |
+          $iss = @"
+          [Setup]
+          AppName=Manutencao MHI Native
+          AppVersion=5.0
+          DefaultDirName={autopf}\ManutencaoMHI
+          OutputDir=output
+          OutputBaseFilename=Instalador_MHI_Native
+          [Files]
+          Source: "dist\Manutencao_MHI_Native.exe"; DestDir: "{app}"; Flags: ignoreversion
+          [Icons]
+          Name: "{autodesktop}\Manutencao MHI Native"; Filename: "{app}\Manutencao_MHI_Native.exe"
+          Name: "{group}\Manutencao MHI Native"; Filename: "{app}\Manutencao_MHI_Native.exe"
+          "@
+          $iss | Out-File -FilePath setup.iss -Encoding utf8
+          iscc setup.iss
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Instalador-MHI-Native
+          path: output/Instalador_MHI_Native.exe
