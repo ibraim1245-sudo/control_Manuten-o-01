@@ -2,7 +2,6 @@ name: Build MHI Industrial Nativo
 on: [push]
 
 env:
-  # Resolve avisos de versões do GitHub
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -17,35 +16,28 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Publicar Aplicação (EXE Único)
-        # Compila tudo em um único arquivo de alto desempenho
+      - name: Publicar Aplicação (Self-Contained)
+        # O self-contained garante que o programa abra em qualquer Windows
         run: dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishReadyToRun=true -o publish_folder
 
-      - name: Verificar Arquivo Gerado
+      - name: Verificar Executável
         shell: powershell
         run: |
-          if (Test-Path "publish_folder\ManutencaoMHI.exe") {
-              echo "Sucesso: Executável encontrado."
+          $exe = Get-ChildItem -Path "publish_folder" -Filter "ManutencaoMHI.exe" -Recurse | Select-Object -First 1
+          if ($exe) {
+              Move-Item $exe.FullName "publish_folder\ManutencaoMHI.exe" -Force
           } else {
-              echo "Erro: Procurando em subpastas..."
-              $files = Get-ChildItem -Path "publish_folder" -Filter "ManutencaoMHI.exe" -Recurse
-              if ($files) {
-                  Move-Item $files[0].FullName "publish_folder\ManutencaoMHI.exe" -Force
-                  echo "Arquivo movido para a pasta correta."
-              } else {
-                  throw "ERRO CRÍTICO: O arquivo ManutencaoMHI.exe não foi gerado!"
-              }
+              throw "ERRO: ManutencaoMHI.exe não encontrado!"
           }
 
-      - name: Gerar Instalador Profissional (Inno Setup)
+      - name: Criar Instalador (Inno Setup)
         shell: powershell
         run: |
           $iss = @"
           [Setup]
           AppName=Manutencao MHI Pro
-          AppVersion=1.0
+          AppVersion=2.0
           DefaultDirName={autopf}\ManutencaoMHI
-          DefaultGroupName=Manutencao MHI
           OutputDir=installer_dist
           OutputBaseFilename=Instalador_MHI_Pro
           Compression=lzma
@@ -53,23 +45,23 @@ jobs:
           PrivilegesRequired=admin
 
           [Tasks]
-          Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Ícones adicionais:"
+          Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"
 
           [Files]
           Source: "publish_folder\ManutencaoMHI.exe"; DestDir: "{app}"; Flags: ignoreversion
 
           [Icons]
           Name: "{autodesktop}\Manutencao MHI Pro"; Filename: "{app}\ManutencaoMHI.exe"; Tasks: desktopicon
-          Name: "{group}\Manutencao MHI Pro"; Filename: "{app}\ManutencaoMHI.exe"
+          Name: "{group}\Manutencao MHI Pro"; Filename: "{app}\Manutencao_MHI.exe"
 
           [Run]
-          Filename: "{app}\ManutencaoMHI.exe"; Description: "Lançar Manutencao MHI Pro"; Flags: nowait postinstall skipifsilent
+          Filename: "{app}\ManutencaoMHI.exe"; Description: "Lançar Sistema"; Flags: nowait postinstall
           "@
           $iss | Out-File -FilePath setup.iss -Encoding utf8
           iscc setup.iss
 
-      - name: Disponibilizar para Download
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: Instalador-Manutencao-MHI
+          name: Instalador-Final
           path: installer_dist/Instalador_MHI_Pro.exe
