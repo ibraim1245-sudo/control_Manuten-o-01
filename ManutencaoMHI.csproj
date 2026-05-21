@@ -5,7 +5,6 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- Força o nome do arquivo final para o instalador encontrar -->
     <AssemblyName>ManutencaoMHI</AssemblyName>
     <ApplicationIcon />
   </PropertyGroup>
