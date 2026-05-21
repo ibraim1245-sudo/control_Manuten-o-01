@@ -6,135 +6,143 @@ using Microsoft.Data.Sqlite;
 using System.IO;
 using System.Collections.Generic;
 
-namespace ManutencaoMHI
-{
-    static class Program
-    {
+namespace ManutencaoMHI {
+    static class Program {
         [STAThread]
-        static void Main()
-        {
-            try 
-            {
+        static void Main() {
+            try {
+                SQLitePCL.Batteries_V2.Init(); // Resolve erro de Banco de Dados
                 ApplicationConfiguration.Initialize();
                 Database.Init();
                 Application.Run(new MainForm());
-            }
-            catch (Exception ex) 
-            {
-                MessageBox.Show("Erro ao iniciar aplicativo: " + ex.Message, "Erro Crítico", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            } catch (Exception ex) {
+                MessageBox.Show("Erro Crítico: " + ex.Message);
             }
         }
     }
 
-    public static class Database
-    {
-        private static string dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MHI_PRO_DATA", "mhi_v2.db");
+    public static class Database {
+        private static string dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MHI_PRO_DATA", "mhi.db");
         public static void Init() {
-            try {
-                Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-                using var conn = new SqliteConnection($"Data Source={dbPath}");
-                conn.Open();
-                var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    CREATE TABLE IF NOT EXISTS ativos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, tag TEXT, categoria TEXT, localizacao TEXT, status TEXT, fabricante TEXT, modelo TEXT, serie TEXT, compra TEXT, garantia TEXT, obs TEXT);
-                    CREATE TABLE IF NOT EXISTS ordens (id INTEGER PRIMARY KEY AUTOINCREMENT, ativo TEXT, titulo TEXT, descricao TEXT, tipo TEXT, prioridade TEXT, responsavel TEXT, horas TEXT, prazo TEXT, obs TEXT, status_os TEXT DEFAULT 'Aberta');
-                    CREATE TABLE IF NOT EXISTS preventivas (id INTEGER PRIMARY KEY AUTOINCREMENT, ativo TEXT, titulo TEXT, descricao TEXT, frequencia TEXT, proxima TEXT, horas TEXT, checklist TEXT);
-                    CREATE TABLE IF NOT EXISTS estoque (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, codigo TEXT, categoria TEXT, qtd INTEGER, min INTEGER, unidade TEXT, custo REAL, localizacao TEXT, fornecedor TEXT, descricao TEXT);";
-                cmd.ExecuteNonQuery();
-            } catch (Exception ex) { throw new Exception("Falha no Banco de Dados: " + ex.Message); }
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+            using var conn = new SqliteConnection($"Data Source={dbPath}");
+            conn.Open();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ativos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, tag TEXT, categoria TEXT, localizacao TEXT, status TEXT, fabricante TEXT, modelo TEXT, serie TEXT, compra TEXT, garantia TEXT, obs TEXT);
+                CREATE TABLE IF NOT EXISTS ordens (id INTEGER PRIMARY KEY AUTOINCREMENT, ativo TEXT, titulo TEXT, descricao TEXT, tipo TEXT, prioridade TEXT, responsavel TEXT, horas TEXT, prazo TEXT, obs TEXT, status_os TEXT DEFAULT 'Aberta');
+                CREATE TABLE IF NOT EXISTS preventivas (id INTEGER PRIMARY KEY AUTOINCREMENT, ativo TEXT, titulo TEXT, descricao TEXT, frequencia TEXT, data TEXT, horas TEXT, checklist TEXT);
+                CREATE TABLE IF NOT EXISTS estoque (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, codigo TEXT, categoria TEXT, qtd INTEGER, min INTEGER, unidade TEXT, custo REAL, localizacao TEXT, fornecedor TEXT, descricao TEXT);";
+            cmd.ExecuteNonQuery();
         }
         public static SqliteConnection GetConn() => new SqliteConnection($"Data Source={dbPath}");
     }
 
-    public class MainForm : Form
-    {
-        TabControl tabs = new TabControl { Dock = DockStyle.Fill };
-        Color darkBg = Color.FromArgb(20, 30, 20); // Dark Green Theme
+    public class MainForm : Form {
+        Panel sidebar = new Panel();
+        TabControl tabs = new TabControl();
+        Color bgDark = Color.FromArgb(14, 18, 14);
         Color mhiGreen = Color.FromArgb(74, 222, 128);
 
         public MainForm() {
-            this.Text = "Manutenção MHI Pro - Industrial Edition";
+            this.Text = "Manutenção MHI Pro - Industrial";
             this.Size = new Size(1300, 850);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = darkBg;
+            this.BackColor = bgDark;
 
-            string[] abas = { "Painel", "Ativos", "Ordens de Serviço", "Preventiva", "Inventário", "Relatórios" };
-            foreach (var a in abas) {
-                var tp = new TabPage(a) { BackColor = darkBg };
-                if (a == "Ativos") ConfigurarAtivos(tp);
+            // Sidebar
+            sidebar.Dock = DockStyle.Left; sidebar.Width = 220; sidebar.BackColor = Color.FromArgb(8, 10, 8);
+            this.Controls.Add(sidebar);
+
+            Label logo = new Label { Text = "MHI PRO", ForeColor = mhiGreen, Font = new Font("Segoe UI", 18, FontStyle.Bold), Dock = DockStyle.Top, Height = 80, TextAlign = ContentAlignment.MiddleCenter };
+            sidebar.Controls.Add(logo);
+
+            string[] menus = { "Painel", "Ativos", "Ordens de Serviço", "Preventiva", "Inventário", "Relatórios" };
+            for (int i = menus.Length - 1; i >= 0; i--) {
+                Button btn = new Button { Text = menus[i], Dock = DockStyle.Top, Height = 50, FlatStyle = FlatStyle.Flat, ForeColor = Color.Gray, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(20, 0, 0, 0) };
+                btn.FlatAppearance.BorderSize = 0;
+                int idx = i; btn.Click += (s, e) => tabs.SelectedIndex = idx;
+                sidebar.Controls.Add(btn);
+            }
+
+            // Tabs
+            tabs.Dock = DockStyle.Fill;
+            tabs.Appearance = TabAppearance.FlatButtons; tabs.ItemSize = new Size(0, 1); tabs.SizeMode = TabSizeMode.Fixed; // Esconde os cabeçalhos das abas
+            foreach (var m in menus) {
+                TabPage tp = new TabPage(m) { BackColor = bgDark };
+                ConfigurarModulo(tp, m);
                 tabs.TabPages.Add(tp);
             }
             this.Controls.Add(tabs);
         }
 
-        private void ConfigurarAtivos(TabPage tp) {
-            Panel pnl = new Panel { Dock = DockStyle.Top, Height = 60, Padding = new Padding(10) };
-            Button btn = new Button { Text = "+ Novo Ativo", Width = 150, Dock = DockStyle.Left, BackColor = mhiGreen, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        private void ConfigurarModulo(TabPage tp, string nome) {
+            Panel header = new Panel { Dock = DockStyle.Top, Height = 60 };
+            Label lbl = new Label { Text = nome, ForeColor = Color.White, Font = new Font("Segoe UI", 16, FontStyle.Bold), Location = new Point(20, 15), AutoSize = true };
+            Button btnNovo = new Button { Text = "+ NOVO", Width = 120, Height = 35, Location = new Point(1000, 15), BackColor = mhiGreen, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
             
-            DataGridView grid = new DataGridView { 
-                Dock = DockStyle.Fill, 
-                BackgroundColor = Color.FromArgb(30, 40, 30), 
-                ForeColor = Color.Black,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                ReadOnly = true
-            };
+            DataGridView grid = new DataGridView { Dock = DockStyle.Fill, BackgroundColor = Color.FromArgb(20, 25, 20), ForeColor = Color.Black, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect, ReadOnly = true };
+            
+            string tabela = nome == "Ordens de Serviço" ? "ordens" : nome == "Inventário" ? "estoque" : nome.ToLower();
+            btnNovo.Click += (s, e) => AbrirForm(tabela, grid);
+            grid.CellDoubleClick += (s, e) => { if(e.RowIndex >= 0) AbrirForm(tabela, grid, Convert.ToInt32(grid.Rows[e.RowIndex].Cells["id"].Value)); };
 
-            btn.Click += (s, e) => AbrirModalAtivo(grid);
-            pnl.Controls.Add(btn);
-            tp.Controls.Add(grid);
-            tp.Controls.Add(pnl);
-            
-            AtualizarGrid(grid, "SELECT id, tag, nome, localizacao, fabricante, modelo FROM ativos");
+            header.Controls.Add(lbl); header.Controls.Add(btnNovo);
+            tp.Controls.Add(grid); tp.Controls.Add(header);
+            AtualizarGrid(grid, tabela);
         }
 
-        private void AbrirModalAtivo(DataGridView grid) {
-            Form f = new Form { Text = "Novo Ativo", Size = new Size(600, 800), BackColor = Color.FromArgb(25, 35, 25), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog };
-            FlowLayoutPanel flp = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(25), AutoScroll = true };
+        private void AbrirForm(string tabela, DataGridView grid, int? id = null) {
+            Form f = new Form { Text = "Gravar Informação", Size = new Size(600, 800), BackColor = Color.FromArgb(20, 25, 20), StartPosition = FormStartPosition.CenterParent };
+            FlowLayoutPanel flp = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), AutoScroll = true };
             
-            var campos = new Dictionary<string, Control>();
-            string[] labels = { "Nome do Ativo *", "Tag / Código *", "Categoria *", "Localização *", "Status *", "Fabricante", "Modelo", "Número de Série", "Data de Compra", "Vencimento Garantia", "Observações" };
+            Dictionary<string, TextBox> campos = new Dictionary<string, TextBox>();
+            string[] labels = tabela switch {
+                "ativos" => new[] { "Nome do Ativo *", "Tag / Código *", "Categoria *", "Localização *", "Status *", "Fabricante", "Modelo", "Número de Série", "Data de Compra", "Vencimento da Garantia", "Observações" },
+                "ordens" => new[] { "Máquina / Ativo *", "Título *", "Descrição *", "Tipo", "Prioridade", "Responsável", "Horas Estimadas", "Prazo", "Observações" },
+                "preventivas" => new[] { "Ativo *", "Título *", "Descrição", "Frequência *", "Próxima Data *", "Horas Estimadas", "Checklist (um por linha)" },
+                "estoque" => new[] { "Nome *", "Código / Referência", "Categoria", "Quantidade *", "Estoque Mínimo *", "Unidade", "Custo Unitário (R$)", "Localização", "Fornecedor", "Descrição" },
+                _ => new string[0]
+            };
 
             foreach (var l in labels) {
                 flp.Controls.Add(new Label { Text = l, ForeColor = Color.White, Width = 520, Margin = new Padding(0, 10, 0, 0) });
-                var txt = new TextBox { Width = 520, BackColor = Color.Black, ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
-                if (l.Contains("Observações")) { txt.Multiline = true; txt.Height = 80; }
-                flp.Controls.Add(txt);
-                campos.Add(l, txt);
+                var t = new TextBox { Width = 520, BackColor = Color.Black, ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
+                if (l.Contains("Descrição") || l.Contains("Observações") || l.Contains("Checklist")) { t.Multiline = true; t.Height = 80; }
+                flp.Controls.Add(t); campos.Add(l, t);
             }
 
-            Button btnSalvar = new Button { Text = "Cadastrar Ativo", Height = 50, Width = 520, BackColor = mhiGreen, FlatStyle = FlatStyle.Flat, Margin = new Padding(0, 20, 0, 0) };
+            Button btnSalvar = new Button { Text = "GRAVAR E SALVAR", Width = 520, Height = 50, BackColor = mhiGreen, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold), Margin = new Padding(0, 20, 0, 0) };
             btnSalvar.Click += (s, e) => {
                 using var conn = Database.GetConn(); conn.Open();
                 var cmd = conn.CreateCommand();
-                cmd.CommandText = "INSERT INTO ativos (nome, tag, categoria, localizacao, status, fabricante, modelo, serie, compra, garantia, obs) VALUES (@n,@t,@c,@l,@s,@f,@m,@se,@co,@g,@o)";
-                cmd.Parameters.AddWithValue("@n", campos["Nome do Ativo *"].Text);
-                cmd.Parameters.AddWithValue("@t", campos["Tag / Código *"].Text);
-                cmd.Parameters.AddWithValue("@c", campos["Categoria *"].Text);
-                cmd.Parameters.AddWithValue("@l", campos["Localização *"].Text);
-                cmd.Parameters.AddWithValue("@s", campos["Status *"].Text);
-                cmd.Parameters.AddWithValue("@f", campos["Fabricante"].Text);
-                cmd.Parameters.AddWithValue("@m", campos["Modelo"].Text);
-                cmd.Parameters.AddWithValue("@se", campos["Número de Série"].Text);
-                cmd.Parameters.AddWithValue("@co", campos["Data de Compra"].Text);
-                cmd.Parameters.AddWithValue("@g", campos["Vencimento Garantia"].Text);
-                cmd.Parameters.AddWithValue("@o", campos["Observações"].Text);
-                cmd.ExecuteNonQuery();
-                f.Close();
-                AtualizarGrid(grid, "SELECT id, tag, nome, localizacao, fabricante, modelo FROM ativos");
+                if (id == null) {
+                    string cols = "", pars = "";
+                    foreach (var k in campos.Keys) { 
+                        string c = k.Replace(" *", "").Replace(" / ", "_").Replace(" ", "_").Replace("(", "").Replace(")", "").ToLower();
+                        cols += c + ","; pars += "@" + c + ",";
+                    }
+                    cmd.CommandText = $"INSERT INTO {tabela} ({cols.TrimEnd(',')}) VALUES ({pars.TrimEnd(',')})";
+                } else {
+                    string sets = "";
+                    foreach (var k in campos.Keys) {
+                        string c = k.Replace(" *", "").Replace(" / ", "_").Replace(" ", "_").Replace("(", "").Replace(")", "").ToLower();
+                        sets += $"{c}=@{c},";
+                    }
+                    cmd.CommandText = $"UPDATE {tabela} SET {sets.TrimEnd(',')} WHERE id={id}";
+                }
+                foreach (var kvp in campos) cmd.Parameters.AddWithValue("@" + kvp.Key.Replace(" *", "").Replace(" / ", "_").Replace(" ", "_").Replace("(", "").Replace(")", "").ToLower(), kvp.Value.Text);
+                cmd.ExecuteNonQuery(); f.Close(); AtualizarGrid(grid, tabela);
             };
 
-            flp.Controls.Add(btnSalvar);
-            f.Controls.Add(flp);
-            f.ShowDialog();
+            flp.Controls.Add(btnSalvar); f.Controls.Add(flp); f.ShowDialog();
         }
 
-        private void AtualizarGrid(DataGridView g, string query) {
+        private void AtualizarGrid(DataGridView g, string tabela) {
             try {
                 using var conn = Database.GetConn(); conn.Open();
-                var cmd = conn.CreateCommand(); cmd.CommandText = query;
-                DataTable dt = new DataTable(); dt.Load(cmd.ExecuteReader());
-                g.DataSource = dt;
+                var cmd = conn.CreateCommand(); cmd.CommandText = $"SELECT * FROM {tabela} ORDER BY id DESC";
+                DataTable dt = new DataTable(); dt.Load(cmd.ExecuteReader()); g.DataSource = dt;
             } catch { }
         }
     }
