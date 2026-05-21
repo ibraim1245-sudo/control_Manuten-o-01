@@ -1,6 +1,5 @@
 name: Build MHI Industrial Nativo
 on: [push]
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -8,60 +7,45 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Checkout Código
-        uses: actions/checkout@v4
-
-      - name: Configurar .NET 8
+      - uses: actions/checkout@v4
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: Publicar Aplicação (Self-Contained)
-        # O self-contained garante que o programa abra em qualquer Windows
-        run: dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishReadyToRun=true -o publish_folder
+      - name: Publicar EXE Industrial
+        # Gera o EXE com todos os componentes da Microsoft e SQLite embutidos
+        run: dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishReadyToRun=true -o publish_dir
 
-      - name: Verificar Executável
+      - name: Criar Instalador Profissional (Inno Setup)
         shell: powershell
         run: |
-          $exe = Get-ChildItem -Path "publish_folder" -Filter "ManutencaoMHI.exe" -Recurse | Select-Object -First 1
-          if ($exe) {
-              Move-Item $exe.FullName "publish_folder\ManutencaoMHI.exe" -Force
-          } else {
-              throw "ERRO: ManutencaoMHI.exe não encontrado!"
-          }
-
-      - name: Criar Instalador (Inno Setup)
-        shell: powershell
-        run: |
+          $exe = Get-ChildItem -Path "publish_dir" -Filter "ManutencaoMHI.exe" -Recurse | Select-Object -First 1
           $iss = @"
           [Setup]
           AppName=Manutencao MHI Pro
-          AppVersion=2.0
+          AppVersion=20.26
           DefaultDirName={autopf}\ManutencaoMHI
-          OutputDir=installer_dist
-          OutputBaseFilename=Instalador_MHI_Pro
-          Compression=lzma
+          OutputDir=output
+          OutputBaseFilename=Instalador_ManutencaoMHI
+          Compression=lzma2/ultra64
           SolidCompression=yes
           PrivilegesRequired=admin
-
           [Tasks]
           Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"
-
           [Files]
-          Source: "publish_folder\ManutencaoMHI.exe"; DestDir: "{app}"; Flags: ignoreversion
-
+          Source: "$($exe.FullName)"; DestDir: "{app}"; Flags: ignoreversion
           [Icons]
           Name: "{autodesktop}\Manutencao MHI Pro"; Filename: "{app}\ManutencaoMHI.exe"; Tasks: desktopicon
-          Name: "{group}\Manutencao MHI Pro"; Filename: "{app}\Manutencao_MHI.exe"
-
+          Name: "{group}\Manutencao MHI Pro"; Filename: "{app}\ManutencaoMHI.exe"
           [Run]
-          Filename: "{app}\ManutencaoMHI.exe"; Description: "Lançar Sistema"; Flags: nowait postinstall
+          Filename: "{app}\ManutencaoMHI.exe"; Description: "Abrir o Sistema"; Flags: nowait postinstall
           "@
           $iss | Out-File -FilePath setup.iss -Encoding utf8
           iscc setup.iss
 
-      - name: Upload
+      - name: Disponibilizar para Download
         uses: actions/upload-artifact@v4
         with:
-          name: Instalador-Final
-          path: installer_dist/Instalador_MHI_Pro.exe
+          name: Instalador-Industrial-MHI
+          path: output/Instalador_ManutencaoMHI.exe
